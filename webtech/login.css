@@ -1,0 +1,114 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@200;400;500&display=swap');
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: "Poppins", sans-serif;
+}
+
+body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url('LEG.png') no-repeat center center/cover;
+    overflow: hidden; 
+}
+
+.wrapper {
+    width: 100%;
+    max-width: 400px; 
+    background: rgba(60, 63, 65, 0.85); 
+    border-radius: 12px; 
+    padding: 30px 20px; 
+    color: rgba(247, 243, 233, 0.9); 
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2); 
+    text-align: center;
+    max-height: 80vh; 
+    overflow: auto;
+}
+
+.wrapper h1 {
+    font-size: 32px; 
+    color: rgba(255, 204, 0, 0.9); 
+    margin-bottom: 20px; 
+}
+
+.wrapper .logo {
+    text-align: center;
+    margin-bottom: 20px; 
+}
+
+.wrapper .logo img {
+    max-width: 160px; 
+}
+
+.input-box {
+    display: flex;
+    flex-direction: column;
+    gap: 15px; 
+}
+
+.input-box .input-field {
+    position: relative;
+    background: rgba(46, 71, 48, 0.85); 
+    border-radius: 6px; 
+    padding: 3px; 
+}
+
+.input-box .input-field input {
+    width: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    font-size: 12px; 
+    color: rgba(255, 255, 255, 0.9); 
+    padding: 8px 35px;
+    border-radius: 6px; 
+}
+
+.input-box .input-field input:focus {
+    background: rgba(57, 95, 71, 0.85); 
+}
+.input-box .input-field input::placeholder {
+    color: rgba(255, 255, 255, 0.7); 
+}
+
+.input-box .input-field i {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: rgba(255, 255, 255, 0.7); 
+    font-size: 16px; 
+}
+
+.btn {
+    width: 100%;
+    padding: 10px; 
+    background-color: rgba(128, 0, 0, 0.85); 
+    border: none;
+    border-radius: 6px; 
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 14px;
+    cursor: pointer;
+    margin-top: 20px; 
+    transition: background-color 0.3s ease;
+}
+
+.btn:hover {
+    background-color: rgba(153, 0, 0, 0.85); 
+}
+
+a {
+    text-decoration: none;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.8);
+    display: block;
+    margin-top: 15px; 
+}
+
+a:hover {
+    color: #ffd700; 
+}
