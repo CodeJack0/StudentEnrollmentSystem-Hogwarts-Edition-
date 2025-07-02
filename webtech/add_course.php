@@ -9,6 +9,11 @@ if (!isset($_SESSION['username'])) {
     exit();
 }
 
+// Generate CSRF token if not already set
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
 $conn = getDbConnection();
 
 // Initialize variables
@@ -18,6 +23,11 @@ $errors = [];
 
 // Handle form submission
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    // CSRF token check
+    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+        die("Invalid CSRF token.");
+    }
+
     $program = trim($_POST['program']);
     $course_code = trim($_POST['course_code']);
 
@@ -71,12 +81,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 <?php if (count($errors) > 0): ?>
                     <div class="alert alert-danger">
                         <?php foreach ($errors as $error): ?>
-                            <p><?php echo $error; ?></p>
+                            <p><?php echo htmlspecialchars($error); ?></p>
                         <?php endforeach; ?>
                     </div>
                 <?php endif; ?>
 
                 <form action="add_course.php" method="POST">
+                    <!-- CSRF token field -->
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
+
                     <div class="form-group">
                         <label for="program">Program Name</label>
                         <input type="text" class="form-control" id="program" name="program" value="<?php echo htmlspecialchars($program); ?>" required>

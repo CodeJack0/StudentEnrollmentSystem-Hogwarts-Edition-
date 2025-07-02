@@ -7,7 +7,7 @@ header("Cache-Control: post-check=0, pre-check=0", false);
 header("Pragma: no-cache");
 
 // --- Session Timeout Check ---
-$timeout_duration = 10; // 10 seconds for testing
+$timeout_duration = 600; // 10 seconds for testing
 
 if (isset($_SESSION['LAST_ACTIVITY']) && (time() - $_SESSION['LAST_ACTIVITY'] > $timeout_duration)) {
     session_unset();

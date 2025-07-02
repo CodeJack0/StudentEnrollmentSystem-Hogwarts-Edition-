@@ -25,7 +25,7 @@ if ($result) {
         $courses[] = $row['course_code']; // Store course codes in an array
     }
 } else {
-    $errors[] = "Error retrieving course codes: " . $conn->error;
+    $errors[] = "Error retrieving course codes: " . htmlspecialchars($conn->error);
 }
 
 // Handle form submission
@@ -74,7 +74,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         exit();
     }
 }
-
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -102,7 +101,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 <?php if (count($errors) > 0): ?>
                     <div class="alert alert-danger">
                         <?php foreach ($errors as $error): ?>
-                            <p><?php echo $error; ?></p>
+                            <p><?php echo htmlspecialchars($error); ?></p>
                         <?php endforeach; ?>
                     </div>
                 <?php endif; ?>

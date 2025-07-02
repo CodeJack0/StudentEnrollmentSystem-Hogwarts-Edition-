@@ -1,15 +1,32 @@
 <?php
 include 'db.php';
+session_start();
+
+// ✅ Generate CSRF token
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
 
 $conn = getDbConnection();
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    // ✅ Verify CSRF token
+    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+        die("Invalid CSRF token");
+    }
+
     $faculty_ID = htmlspecialchars($_POST['faculty_ID']); 
     $fname = htmlspecialchars($_POST['fname']);
     $mname = htmlspecialchars($_POST['mname']);
     $lname = htmlspecialchars($_POST['lname']);
     $birthdate = htmlspecialchars($_POST['birthdate']);
-    $email = htmlspecialchars($_POST['email']);
+    
+    // ✅ Validate email format
+    $email = filter_var($_POST['email'], FILTER_VALIDATE_EMAIL);
+    if (!$email) {
+        die("Invalid email format");
+    }
+
     $username = htmlspecialchars($_POST['username']);
     $password = htmlspecialchars($_POST['password']);
     $confirm_password = htmlspecialchars($_POST['confirm_password']);
@@ -27,8 +44,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $today = new DateTime();
     $age = $today->diff($birthdate_obj)->y;
 
-   
-  
     // Check if the email or username already exists in the logins table
     $stmt = $conn->prepare("SELECT email, username FROM logins WHERE email = ? OR username = ?");
     $stmt->bind_param("ss", $email, $username);
@@ -113,7 +128,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <body>
    <div class="wrapper">
      <div class="logo">
-        <img src="Hogwarts-Logo.png" alt="Logo">  <!-- Add your logo here -->
+        <img src="Hogwarts-Logo.png" alt="Logo">
      </div>
      <form action="register.php" method="POST">
       <h1>Register</h1>
@@ -165,6 +180,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             <i class='bx bx-calendar'></i>
         </div>
       </div>
+
+      <!-- ✅ CSRF Token Field -->
+      <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
 
       <button type="submit" class="btn">Register</button>
       <a href="login.php">Have an account? login here</a>
