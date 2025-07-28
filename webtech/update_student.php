@@ -1,5 +1,6 @@
 <?php
 include 'db.php';
+include 'aes.php'; // Add this to use aes_encrypt/decrypt
 
 session_start(); 
 
@@ -9,12 +10,18 @@ if (!isset($_SESSION['username'])) {
     exit();
 }
 
+// Only allow admin and faculty
+if (!isset($_SESSION['role']) || !in_array($_SESSION['role'], ['admin', 'faculty'])) {
+    header("Location: unauthorized.php"); // Create this page if you want a custom access denied message
+    exit();
+}
+
 $conn = getDbConnection();
 
 // Handle Update
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update_student'])) {
     $id = intval($_POST['id']);
-    $fullname = htmlspecialchars($_POST['fullname']);
+    $fullname = aes_encrypt(htmlspecialchars($_POST['fullname'])); // Encrypt before update
     $course = htmlspecialchars($_POST['course']);
     $year_level = htmlspecialchars($_POST['year_level']);
     
@@ -33,9 +40,11 @@ if (isset($_GET['id'])) {
     $stmt = $conn->prepare("SELECT fullname, course, year_level FROM students WHERE id = ?");
     $stmt->bind_param("i", $id);
     $stmt->execute();
-    $stmt->bind_result($fullname, $course, $year_level);
+    $stmt->bind_result($encrypted_fullname, $course, $year_level);
     $stmt->fetch();
     $stmt->close();
+
+    $fullname = aes_decrypt($encrypted_fullname); // Decrypt for display
 }
 
 // Fetch courses for dropdown

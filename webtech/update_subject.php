@@ -1,11 +1,17 @@
 <?php
 include 'db.php';
 
-session_start(); 
+session_start();
 
 // Redirect to login if not authenticated
 if (!isset($_SESSION['username'])) {
     header("Location: login.php");
+    exit();
+}
+
+// Redirect to dashboard if not admin or faculty
+if (!isset($_SESSION['role']) || !in_array($_SESSION['role'], ['admin', 'faculty'])) {
+    header("Location: dashboard.php");
     exit();
 }
 
@@ -14,20 +20,20 @@ $conn = getDbConnection();
 // Handle Update
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update_subject'])) {
     $id = intval($_POST['id']);
-    $subject_detail = htmlspecialchars($_POST['subject_detail']);
-    $course_code = htmlspecialchars($_POST['course']);
-    $year_level = htmlspecialchars($_POST['year_level']);
+    $subject_detail = htmlspecialchars(trim($_POST['subject_detail']));
+    $course_code = htmlspecialchars(trim($_POST['course']));
+    $year_level = htmlspecialchars(trim($_POST['year_level']));
     $units = intval($_POST['units']);
     $lab = intval($_POST['lab']);
     $lecture = intval($_POST['lecture']);
-    $pre_requisite = htmlspecialchars($_POST['pre_requisite']);
-    $semester = htmlspecialchars($_POST['semester']);
-    
+    $pre_requisite = htmlspecialchars(trim($_POST['pre_requisite']));
+    $semester = htmlspecialchars(trim($_POST['semester']));
+
     $stmt = $conn->prepare("UPDATE subjects SET subject_detail = ?, course_code = ?, year_level = ?, units = ?, lab = ?, lecture = ?, pre_requisite = ?, semester = ? WHERE subject_id = ?");
     $stmt->bind_param("sssiiissi", $subject_detail, $course_code, $year_level, $units, $lab, $lecture, $pre_requisite, $semester, $id);
     $stmt->execute();
     $stmt->close();
-    
+
     header("Location: dashboard.php");
     exit();
 }
@@ -41,9 +47,13 @@ if (isset($_GET['id'])) {
     $stmt->bind_result($subject_detail, $course_code, $year_level, $units, $lab, $lecture, $pre_requisite, $semester);
     $stmt->fetch();
     $stmt->close();
+} else {
+    // If no ID is passed, redirect back
+    header("Location: dashboard.php");
+    exit();
 }
 
-// Fetch courses for dropdown
+// Fetch course list
 $courses = [];
 $result_courses = $conn->query("SELECT course_code FROM courses");
 if ($result_courses) {
@@ -76,13 +86,14 @@ if ($result_courses) {
             <div class="form-container">
                 <h2 class="text-center mb-4">Update Subject</h2>
 
-                <!-- Update Subject Form -->
                 <form action="" method="POST">
                     <input type="hidden" name="id" value="<?php echo htmlspecialchars($id); ?>">
+
                     <div class="form-group">
                         <label for="subject_detail">Subject Detail</label>
                         <input type="text" class="form-control" id="subject_detail" name="subject_detail" value="<?php echo htmlspecialchars($subject_detail); ?>" required>
                     </div>
+
                     <div class="form-group">
                         <label for="course">Course</label>
                         <select class="form-control" id="course" name="course" required>
@@ -94,33 +105,39 @@ if ($result_courses) {
                             <?php endforeach; ?>
                         </select>
                     </div>
+
                     <div class="form-group">
                         <label for="year_level">Year Level</label>
                         <select class="form-control" id="year_level" name="year_level" required>
                             <option value="">Select Year Level</option>
-                            <option value="1" <?php if ($year_level == '1') echo 'selected'; ?>>1st Year</option>
-                            <option value="2" <?php if ($year_level == '2') echo 'selected'; ?>>2nd Year</option>
-                            <option value="3" <?php if ($year_level == '3') echo 'selected'; ?>>3rd Year</option>
-                            <option value="4" <?php if ($year_level == '4') echo 'selected'; ?>>4th Year</option>
-                            <option value="5" <?php if ($year_level == '5') echo 'selected'; ?>>5th Year</option>
+                            <?php for ($i = 1; $i <= 5; $i++): ?>
+                                <option value="<?php echo $i; ?>" <?php if ($year_level == (string)$i) echo 'selected'; ?>>
+                                    <?php echo $i; ?><?php echo $i == 1 ? 'st' : ($i == 2 ? 'nd' : ($i == 3 ? 'rd' : 'th')); ?> Year
+                                </option>
+                            <?php endfor; ?>
                         </select>
                     </div>
+
                     <div class="form-group">
                         <label for="units">Units</label>
                         <input type="number" class="form-control" id="units" name="units" value="<?php echo htmlspecialchars($units); ?>" required>
                     </div>
+
                     <div class="form-group">
                         <label for="lab">Lab Hours</label>
                         <input type="number" class="form-control" id="lab" name="lab" value="<?php echo htmlspecialchars($lab); ?>" required>
                     </div>
+
                     <div class="form-group">
                         <label for="lecture">Lecture Hours</label>
                         <input type="number" class="form-control" id="lecture" name="lecture" value="<?php echo htmlspecialchars($lecture); ?>" required>
                     </div>
+
                     <div class="form-group">
                         <label for="pre_requisite">Pre-Requisite</label>
                         <input type="text" class="form-control" id="pre_requisite" name="pre_requisite" value="<?php echo htmlspecialchars($pre_requisite); ?>">
                     </div>
+
                     <div class="form-group">
                         <label for="semester">Semester</label>
                         <select class="form-control" id="semester" name="semester" required>
@@ -129,11 +146,13 @@ if ($result_courses) {
                             <option value="2" <?php if ($semester == '2') echo 'selected'; ?>>2nd Semester</option>
                         </select>
                     </div>
+
                     <div class="form-group text-center">
                         <button type="submit" name="update_subject" class="btn btn-primary">Update Subject</button>
                         <a href="dashboard.php" class="btn btn-secondary">Cancel</a>
                     </div>
                 </form>
+
             </div>
         </div>
     </div>

@@ -1,8 +1,8 @@
 <?php
 include 'db.php';
+include 'aes.php';
 session_start();
 
-// ✅ Generate CSRF token
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
@@ -10,18 +10,16 @@ if (empty($_SESSION['csrf_token'])) {
 $conn = getDbConnection();
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    // ✅ Verify CSRF token
     if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
         die("Invalid CSRF token");
     }
 
+    // Sanitize inputs
     $faculty_ID = htmlspecialchars($_POST['faculty_ID']); 
     $fname = htmlspecialchars($_POST['fname']);
     $mname = htmlspecialchars($_POST['mname']);
     $lname = htmlspecialchars($_POST['lname']);
     $birthdate = htmlspecialchars($_POST['birthdate']);
-    
-    // ✅ Validate email format
     $email = filter_var($_POST['email'], FILTER_VALIDATE_EMAIL);
     if (!$email) {
         die("Invalid email format");
@@ -30,45 +28,51 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $username = htmlspecialchars($_POST['username']);
     $password = htmlspecialchars($_POST['password']);
     $confirm_password = htmlspecialchars($_POST['confirm_password']);
+    $role = $_POST['role'];
+    $allowed_roles = ['admin', 'faculty', 'student'];
+    if (!in_array($role, $allowed_roles)) {
+        die("Invalid role selected.");
+    }
 
     if (strlen($password) < 6) {
         die("Password must be at least 6 characters long");
     }
-
     if ($password !== $confirm_password) {
         die("Passwords do not match");
     }
 
-    // Calculate the age based on the birthdate
     $birthdate_obj = new DateTime($birthdate);
     $today = new DateTime();
     $age = $today->diff($birthdate_obj)->y;
 
-    // Check if the email or username already exists in the logins table
+    // Check existing email or username
     $stmt = $conn->prepare("SELECT email, username FROM logins WHERE email = ? OR username = ?");
     $stmt->bind_param("ss", $email, $username);
     $stmt->execute();
     $stmt->store_result();
-
     if ($stmt->num_rows > 0) {
         die("Email or Username already registered");
     }
-
     $stmt->close();
 
-    // Insert data into the registers table
+    // Encrypt selected fields
+    $enc_fname = aes_encrypt($fname);
+    $enc_mname = aes_encrypt($mname);
+    $enc_lname = aes_encrypt($lname);
+    $enc_email = aes_encrypt($email);
+
+    // Insert into 'registers'
     $stmt = $conn->prepare("INSERT INTO registers (faculty_ID, fname, mname, lname, birthdate, age) VALUES (?, ?, ?, ?, ?, ?)");
-    $stmt->bind_param("sssssi", $faculty_ID, $fname, $mname, $lname, $birthdate, $age);
+    $stmt->bind_param("sssssi", $faculty_ID, $enc_fname, $enc_mname, $enc_lname, $birthdate, $age);
 
     if ($stmt->execute()) {
         $register_id = $conn->insert_id;
 
-        // Hash the password before storing it
-        $hashed_password = password_hash($password, PASSWORD_BCRYPT);
+        $hashed_password = password_hash($password, PASSWORD_DEFAULT);
 
-        // Insert into the logins table
-        $stmt = $conn->prepare("INSERT INTO logins (register_id, username, email, password) VALUES (?, ?, ?, ?)");
-        $stmt->bind_param("isss", $register_id, $username, $email, $hashed_password);
+        // Insert into 'logins' WITHOUT encrypting register_id
+        $stmt = $conn->prepare("INSERT INTO logins (register_id, username, email, password, role) VALUES (?, ?, ?, ?, ?)");
+        $stmt->bind_param("issss", $register_id, $username, $enc_email, $hashed_password, $role);
 
         if ($stmt->execute()) {
             header("Location: login.php");
@@ -76,7 +80,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         } else {
             echo "Error: " . $stmt->error;
         }
-
         $stmt->close();
     } else {
         echo "Error: " . $stmt->error;
@@ -85,6 +88,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $conn->close();
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -94,7 +98,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <link rel="stylesheet" href="register.css">
     <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
     <script>
-        // Generate a random Faculty ID
         function generatefaculty_ID() {
             const chars = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
             let facultyID = '';
@@ -104,7 +107,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             document.getElementById("faculty_ID").value = facultyID.toUpperCase();
         }
 
-        // Calculate Age based on selected birthdate
         function calculateAge() {
             const birthdate = document.getElementById("birthdate").value;
             if (birthdate) {
@@ -119,74 +121,77 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
         }
 
-        // Call the faculty ID generator when the page loads
         window.onload = function() {
             generatefaculty_ID();
         };
     </script>
 </head>
 <body>
-   <div class="wrapper">
-     <div class="logo">
-        <img src="Hogwarts-Logo.png" alt="Logo">
-     </div>
-     <form action="register.php" method="POST">
-      <h1>Register</h1>
+    <div class="wrapper">
+        <div class="logo">
+            <img src="Hogwarts-Logo.png" alt="Logo">
+        </div>
+        <form action="register.php" method="POST">
+            <h1>Register</h1>
 
-      <div class="input-box">
-         <!-- Faculty ID Field (automatically generated) -->
-         <div class="input-field">
-            <input type="text" id="faculty_ID" name="faculty_ID" placeholder="Faculty ID" readonly>
-            <i class='bx bx-id-card'></i>
-        </div>
-        <div class="input-field">
-            <input type="text" name="fname" placeholder="First Name" required>
-            <i class='bx bx-user'></i>
-        </div>
-        <div class="input-field">
-            <input type="text" name="mname" placeholder="Middle Name">
-            <i class='bx bx-user'></i>
-        </div>
-        <div class="input-field">
-            <input type="text" name="lname" placeholder="Last Name" required>
-            <i class='bx bx-user'></i>
-        </div>
+            <div class="input-box">
+                <div class="input-field">
+                    <input type="text" id="faculty_ID" name="faculty_ID" placeholder="Faculty ID" readonly>
+                    <i class='bx bx-id-card'></i>
+                </div>
+                <div class="input-field">
+                    <input type="text" name="fname" placeholder="First Name" required>
+                    <i class='bx bx-user'></i>
+                </div>
+                <div class="input-field">
+                    <input type="text" name="mname" placeholder="Middle Name">
+                    <i class='bx bx-user'></i>
+                </div>
+                <div class="input-field">
+                    <input type="text" name="lname" placeholder="Last Name" required>
+                    <i class='bx bx-user'></i>
+                </div>
+                <div class="input-field">
+                    <input type="date" id="birthdate" name="birthdate" placeholder="Birthdate" required onchange="calculateAge()">
+                    <i class='bx bx-calendar'></i>
+                </div>
+                <div class="input-field">
+                    <input type="email" name="email" placeholder="Email" required>
+                    <i class='bx bx-envelope'></i>
+                </div>
+                <div class="input-field">
+                    <input type="text" name="username" placeholder="Username" required>
+                    <i class='bx bx-user'></i>
+                </div>
+                <div class="input-field">
+                    <input type="password" name="password" placeholder="Password" required>
+                    <i class='bx bxs-lock-alt'></i>
+                </div>
+                <div class="input-field">
+                    <input type="password" name="confirm_password" placeholder="Confirm Password" required>
+                    <i class='bx bxs-lock-alt'></i>
+                </div>
+                <div class="input-field">
+                    <input type="text" id="age" name="age" placeholder="Age" readonly>
+                    <i class='bx bx-calendar'></i>
+                </div>
 
-        <!-- Birthdate input that triggers age calculation -->
-        <div class="input-field">
-            <input type="date" id="birthdate" name="birthdate" placeholder="Birthdate" required onchange="calculateAge()">
-            <i class='bx bx-calendar'></i>
-        </div>
+                <div class="input-field">
+                    <select name="role" required>
+                        <option value="" disabled selected>Select Role</option>
+                        <option value="faculty">Faculty</option>
+                        <option value="student">Student</option>
+                        <!--<option value="admin">Admin</option>-->
+                    </select>
+                    <i class='bx bx-user-check'></i>
+                </div>
+            </div>
 
-        <div class="input-field">
-            <input type="email" name="email" placeholder="Email" required>
-            <i class='bx bx-envelope'></i>
-        </div>
-        <div class="input-field">
-            <input type="text" name="username" placeholder="Username" required>
-            <i class='bx bx-user'></i>
-        </div>
-        <div class="input-field">
-            <input type="password" name="password" placeholder="Password" required>
-            <i class='bx bxs-lock-alt'></i>
-        </div>
-        <div class="input-field">
-            <input type="password" name="confirm_password" placeholder="Confirm Password" required>
-            <i class='bx bxs-lock-alt'></i>
-        </div>
-        <!-- Age Field (automatically calculated) -->
-        <div class="input-field">
-            <input type="text" id="age" name="age" placeholder="Age" readonly>
-            <i class='bx bx-calendar'></i>
-        </div>
-      </div>
+            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
 
-      <!-- ✅ CSRF Token Field -->
-      <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
-
-      <button type="submit" class="btn">Register</button>
-      <a href="login.php">Have an account? login here</a>
-      </form>
+            <button type="submit" class="btn">Register</button>
+            <a href="login.php">Have an account? login here</a>
+        </form>
     </div>
 </body>
 </html>

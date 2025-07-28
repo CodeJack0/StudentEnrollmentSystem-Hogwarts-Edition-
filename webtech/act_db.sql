@@ -157,3 +157,8 @@ ADD COLUMN login_attempts INT DEFAULT 0,
 ADD COLUMN last_attempt DATETIME DEFAULT NULL;
 
 ALTER TABLE logins MODIFY password VARCHAR(255);
+
+ALTER TABLE logins ADD COLUMN role ENUM('admin', 'faculty', 'student') NOT NULL;
+
+ALTER TABLE logins 
+MODIFY COLUMN role ENUM('admin', 'faculty', 'student', 'student_assistance') NOT NULL;

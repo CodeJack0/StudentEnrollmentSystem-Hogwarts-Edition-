@@ -4,7 +4,7 @@ include 'db.php';
 session_start(); 
 
 // Redirect to login if not authenticated
-if (!isset($_SESSION['username'])) {
+if (!isset($_SESSION['username']) || !in_array($_SESSION['role'], ['admin', 'faculty'])) {
     header("Location: login.php");
     exit();
 }
@@ -41,12 +41,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     // Insert into database if no errors
     if (count($errors) == 0) {
-        // Prepare and bind
         $stmt = $conn->prepare("INSERT INTO courses (program, course_code) VALUES (?, ?)");
         $stmt->bind_param("ss", $program, $course_code);
         
         if ($stmt->execute()) {
-            // Redirect back to dashboard after adding
             header("Location: dashboard.php");
             exit();
         } else {

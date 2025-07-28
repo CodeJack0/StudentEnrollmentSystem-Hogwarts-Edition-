@@ -1,10 +1,11 @@
 <?php
 include 'db.php';
+include 'aes.php'; // 🔐 AES encryption for fullname only
 
 session_start(); 
 
-// Redirect to login if not authenticated
-if (!isset($_SESSION['username'])) {
+// Restrict access to admin and faculty only
+if (!isset($_SESSION['username']) || !in_array($_SESSION['role'], ['admin', 'faculty'])) {
     header("Location: login.php");
     exit();
 }
@@ -37,7 +38,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
 
     $fullname = trim($_POST['fullname']);
-    $course = $_POST['course']; // Get course_id from dropdown
+    $course = $_POST['course'];
     $year_level = $_POST['year_level'];
 
     // Validate inputs
@@ -53,18 +54,20 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     // Generate a unique student ID if no errors
     if (count($errors) == 0) {
-        // Generate student ID based on the last inserted ID + 1
         $result = $conn->query("SELECT MAX(student_id) AS last_id FROM students");
         $row = $result->fetch_assoc();
         $last_id = $row['last_id'];
-        $student_id = $last_id ? $last_id + 1 : 100001; // Start from 100001 if no students exist
+        $plain_student_id = $last_id ? $last_id + 1 : 100001;
+
+        // 🔐 Encrypt fullname only
+        $encrypted_fullname = aes_encrypt($fullname);
 
         // Insert into database
         $stmt = $conn->prepare("INSERT INTO students (student_id, fullname, course, year_level) VALUES (?, ?, ?, ?)");
-        $stmt->bind_param("isss", $student_id, $fullname, $course, $year_level);
+        $stmt->bind_param("ssss", $plain_student_id, $encrypted_fullname, $course, $year_level);
         $stmt->execute();
 
-        // Redirect back to dashboard after adding
+        // Redirect after success
         header("Location: dashboard.php");
         exit();
     }
@@ -96,13 +99,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 <?php if (count($errors) > 0): ?>
                     <div class="alert alert-danger">
                         <?php foreach ($errors as $error): ?>
-                            <p><?php echo $error; ?></p>
+                            <p><?php echo htmlspecialchars($error); ?></p>
                         <?php endforeach; ?>
                     </div>
                 <?php endif; ?>
 
                 <form action="add_student.php" method="POST">
-                    <!-- CSRF token field -->
                     <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
 
                     <div class="form-group">

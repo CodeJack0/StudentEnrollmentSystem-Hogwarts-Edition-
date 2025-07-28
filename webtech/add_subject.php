@@ -9,6 +9,12 @@ if (!isset($_SESSION['username'])) {
     exit();
 }
 
+// Check role — only allow admin or faculty
+if (!isset($_SESSION['role']) || !in_array($_SESSION['role'], ['admin', 'faculty'])) {
+    echo "<h3 style='color: red; text-align:center;'>Access denied. Only admins and faculty are allowed.</h3>";
+    exit();
+}
+
 $conn = getDbConnection();
 
 // Initialize variables
@@ -17,12 +23,12 @@ $errors = [];
 
 // Retrieve available course codes from the database
 $courses = [];
-$sql = "SELECT course_code FROM courses"; // Adjust table name as needed
+$sql = "SELECT course_code FROM courses";
 $result = $conn->query($sql);
 
 if ($result) {
     while ($row = $result->fetch_assoc()) {
-        $courses[] = $row['course_code']; // Store course codes in an array
+        $courses[] = $row['course_code'];
     }
 } else {
     $errors[] = "Error retrieving course codes: " . htmlspecialchars($conn->error);
@@ -64,12 +70,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     // Insert into database if no errors
     if (count($errors) == 0) {
-        // Prepare and bind
         $stmt = $conn->prepare("INSERT INTO subjects (course_code, subject_detail, units, lab, lecture, pre_requisite, year_level, semester) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
         $stmt->bind_param("ssiiisss", $course_code, $subject_detail, $units, $lab, $lecture, $pre_requisite, $year_level, $semester);
         $stmt->execute();
 
-        // Redirect back to dashboard after adding
+        // Redirect to dashboard
         header("Location: dashboard.php");
         exit();
     }

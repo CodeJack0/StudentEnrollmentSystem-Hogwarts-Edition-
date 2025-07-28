@@ -1,43 +1,39 @@
 <?php
 include 'db.php';
+include 'aes.php'; // 🔐 Include AES functions
 session_start();
 
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
-header("Cache-Control: post-check=0, pre-check=0", false);
 header("Pragma: no-cache");
 
-// --- Session Timeout Check ---
-$timeout_duration = 600; // 10 seconds for testing
-
+$timeout_duration = 600;
 if (isset($_SESSION['LAST_ACTIVITY']) && (time() - $_SESSION['LAST_ACTIVITY'] > $timeout_duration)) {
     session_unset();
     session_destroy();
-    echo "<script>
-        alert('Session expired due to inactivity. You have been logged out.');
-        window.location.href = 'login.php';
-    </script>";
+    echo "<script>alert('Session expired due to inactivity.'); window.location.href = 'login.php';</script>";
     exit();
 }
-
-// Update timestamp only if not expired
 $_SESSION['LAST_ACTIVITY'] = time();
 
-// --- Auth Check ---
 if (!isset($_SESSION['username'])) {
     header("Location: login.php");
     exit();
 }
 
-$conn = getDbConnection();
+$role = $_SESSION['role'] ?? '';
+if ($role === 'student') {
+    header("Location: student_dashboard.php");
+    exit();
+}
+if (!in_array($role, ['admin', 'faculty'])) {
+    header("Location: login.php");
+    exit();
+}
 
-// Fetch user info
+$conn = getDbConnection();
 $username = $_SESSION['username'];
-$stmt = $conn->prepare("
-    SELECT r.*, l.username, r.profile_image
-    FROM registers r
-    JOIN logins l ON r.id = l.register_id
-    WHERE l.username = ?
-");
+
+$stmt = $conn->prepare("SELECT r.*, l.username, r.profile_image FROM registers r JOIN logins l ON r.id = l.register_id WHERE l.username = ?");
 $stmt->bind_param("s", $username);
 $stmt->execute();
 $user = $stmt->get_result()->fetch_assoc();
@@ -51,9 +47,8 @@ if (!$user) {
 
 $profile_image = $user['profile_image'] ? base64_encode($user['profile_image']) : null;
 
-// Deletion helper
 function deleteById($conn, $table, $column, $idKey) {
-    if (isset($_GET[$idKey])) {
+    if (isset($_GET[$idKey]) && ($_SESSION['role'] ?? '') === 'admin') {
         $id = (int)$_GET[$idKey];
         $stmt = $conn->prepare("DELETE FROM $table WHERE $column = ?");
         $stmt->bind_param("i", $id);
@@ -64,31 +59,20 @@ function deleteById($conn, $table, $column, $idKey) {
     }
 }
 
-// Handle deletes
 deleteById($conn, 'students', 'id', 'delete');
 deleteById($conn, 'subjects', 'subject_id', 'delete_subject');
 deleteById($conn, 'courses', 'course_id', 'delete_course');
 
-// Fetch tables
-$result_students = $conn->query("
-    SELECT s.*, c.course_code
-    FROM students s
-    JOIN courses c ON s.course = c.course_id
-");
-$result_subjects = $conn->query("
-    SELECT sub.*, c.course_code
-    FROM subjects sub
-    JOIN courses c ON sub.course_code = c.course_code
-");
+$result_students = $conn->query("SELECT s.*, c.course_code FROM students s JOIN courses c ON s.course = c.course_id");
+$result_subjects = $conn->query("SELECT sub.*, c.course_code FROM subjects sub JOIN courses c ON sub.course_code = c.course_code");
 $result_courses = $conn->query("SELECT * FROM courses");
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title>Student Dashboard</title>
+    <title>Dashboard</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto">
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
@@ -98,43 +82,42 @@ $result_courses = $conn->query("SELECT * FROM courses");
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/js/bootstrap.min.js"></script>
     <link rel="stylesheet" href="dashboard.css">
     <script>
-         $(document).ready(function(){
-        $('[data-toggle="tooltip"]').tooltip();
-    });
+        $(document).ready(function(){
+            $('[data-toggle="tooltip"]').tooltip();
+        });
 
-    if (window.history.replaceState) {
-        window.history.replaceState(null, null, window.location.href);
-    }
+        if (window.history.replaceState) {
+            window.history.replaceState(null, null, window.location.href);
+        }
 
-    // JavaScript timeout matching PHP (10 seconds for testing)
-    let inactivityTime = function () {
-        let warningTimer;
-        let logoutTimer;
-        const warningDuration = 10000; // 10 seconds
+        let inactivityTime = function () {
+            let warningTimer;
+            let logoutTimer;
+            const warningDuration = 10000;
 
-        function showWarning() {
-            let stayLoggedIn = confirm("You have been inactive. Do you want to stay logged in?");
-            if (stayLoggedIn) {
-                resetTimers();
-            } else {
-                window.location.href = 'logout.php';
+            function showWarning() {
+                let stayLoggedIn = confirm("You have been inactive. Do you want to stay logged in?");
+                if (stayLoggedIn) {
+                    resetTimers();
+                } else {
+                    window.location.href = 'logout.php';
+                }
             }
-        }
 
-        function resetTimers() {
-            clearTimeout(warningTimer);
-            clearTimeout(logoutTimer);
-            warningTimer = setTimeout(showWarning, warningDuration);
-        }
+            function resetTimers() {
+                clearTimeout(warningTimer);
+                clearTimeout(logoutTimer);
+                warningTimer = setTimeout(showWarning, warningDuration);
+            }
 
-        window.onload = resetTimers;
-        document.onmousemove = resetTimers;
-        document.onkeydown = resetTimers;
-        document.onclick = resetTimers;
-        document.onscroll = resetTimers;
-    };
+            window.onload = resetTimers;
+            document.onmousemove = resetTimers;
+            document.onkeydown = resetTimers;
+            document.onclick = resetTimers;
+            document.onscroll = resetTimers;
+        };
 
-    inactivityTime();
+        inactivityTime();
     </script>
 </head>
 <body>
@@ -163,7 +146,6 @@ $result_courses = $conn->query("SELECT * FROM courses");
 </nav>
 
 <div class="container-xl">
-
     <!-- Student Table -->
     <div class="table-responsive">
         <div class="table-wrapper">
@@ -188,14 +170,16 @@ $result_courses = $conn->query("SELECT * FROM courses");
                 <tbody>
                     <?php while ($row = $result_students->fetch_assoc()): ?>
                     <tr>
-                        <td><?php echo htmlspecialchars($row['student_id']); ?></td>
-                        <td><?php echo htmlspecialchars($row['fullname']); ?></td>
+                       <td><?php echo htmlspecialchars($row['student_id']); ?></td>
+                        <td><?php echo htmlspecialchars(aes_decrypt($row['fullname'])); ?></td>
                         <td><?php echo htmlspecialchars($row['course_code']); ?></td>
                         <td><?php echo htmlspecialchars($row['year_level']); ?></td>
                         <td>
                             <a href="view_student.php?id=<?php echo htmlspecialchars($row['id']); ?>" class="view" title="View" data-toggle="tooltip"><i class="material-icons">&#xE417;</i></a>
                             <a href="update_student.php?id=<?php echo htmlspecialchars($row['id']); ?>" class="edit" title="Edit" data-toggle="tooltip"><i class="material-icons">&#xE254;</i></a>
-                            <a href="dashboard.php?delete=<?php echo htmlspecialchars($row['id']); ?>" class="delete" title="Delete" data-toggle="tooltip"><i class="material-icons">&#xE872;</i></a>
+                            <?php if ($role === 'admin'): ?>
+                                <a href="dashboard.php?delete=<?php echo htmlspecialchars($row['id']); ?>" class="delete" title="Delete" data-toggle="tooltip"><i class="material-icons">&#xE872;</i></a>
+                            <?php endif; ?>
                         </td>
                     </tr>
                     <?php endwhile; ?>
@@ -244,7 +228,9 @@ $result_courses = $conn->query("SELECT * FROM courses");
                         <td><?php echo htmlspecialchars($subject['semester']); ?></td>
                         <td>
                             <a href="update_subject.php?id=<?php echo htmlspecialchars($subject['subject_id']); ?>" class="edit" title="Edit" data-toggle="tooltip"><i class="material-icons">&#xE254;</i></a>
-                            <a href="dashboard.php?delete_subject=<?php echo htmlspecialchars($subject['subject_id']); ?>" class="delete" title="Delete" data-toggle="tooltip"><i class="material-icons">&#xE872;</i></a>
+                            <?php if ($role === 'admin'): ?>
+                                <a href="dashboard.php?delete_subject=<?php echo htmlspecialchars($subject['subject_id']); ?>" class="delete" title="Delete" data-toggle="tooltip"><i class="material-icons">&#xE872;</i></a>
+                            <?php endif; ?>
                         </td>
                     </tr>
                     <?php endwhile; ?>
@@ -276,13 +262,14 @@ $result_courses = $conn->query("SELECT * FROM courses");
                 <tbody>
                     <?php while ($course = $result_courses->fetch_assoc()): ?>
                     <tr>
-                        
                         <td><?php echo htmlspecialchars($course['course_id']); ?></td>
                         <td><?php echo htmlspecialchars($course['program']); ?></td>
                         <td><?php echo htmlspecialchars($course['course_code']); ?></td>
                         <td>
                             <a href="update_course.php?id=<?php echo htmlspecialchars($course['course_id']); ?>" class="edit" title="Edit" data-toggle="tooltip"><i class="material-icons">&#xE254;</i></a>
-                            <a href="dashboard.php?delete_course=<?php echo htmlspecialchars($course['course_id']); ?>" class="delete" title="Delete" data-toggle="tooltip"><i class="material-icons">&#xE872;</i></a>
+                            <?php if ($role === 'admin'): ?>
+                                <a href="dashboard.php?delete_course=<?php echo htmlspecialchars($course['course_id']); ?>" class="delete" title="Delete" data-toggle="tooltip"><i class="material-icons">&#xE872;</i></a>
+                            <?php endif; ?>
                         </td>
                     </tr>
                     <?php endwhile; ?>
@@ -292,6 +279,5 @@ $result_courses = $conn->query("SELECT * FROM courses");
     </div>
 
 </div>
-
 </body>
-</html>
+</html>  

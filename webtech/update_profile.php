@@ -4,114 +4,125 @@ include 'db.php';
 session_start();
 
 // Redirect to login if not authenticated
-if (!isset($_SESSION['username'])) {
+if (!isset($_SESSION['username']) || !isset($_SESSION['role'])) {
     header("Location: login.php");
     exit();
 }
 
 $conn = getDbConnection();
 $username = $_SESSION['username'];
+$role = $_SESSION['role'];
 
 // Fetch user details
-$query = $conn->prepare("SELECT * FROM logins INNER JOIN registers ON logins.register_id = registers.id WHERE logins.username = ?");
+$query = $conn->prepare("
+    SELECT registers.*, logins.username, logins.password 
+    FROM logins 
+    INNER JOIN registers ON logins.register_id = registers.id 
+    WHERE logins.username = ?
+");
 $query->bind_param("s", $username);
 $query->execute();
 $user = $query->get_result()->fetch_assoc();
 
+if (!$user) {
+    header("Location: unauthorized.php"); // No such user found
+    exit();
+}
+
+// Restriction: only allow 'admin' or the faculty editing their own account
+if (!in_array($role, ['admin', 'faculty'])) {
+    header("Location: unauthorized.php");
+    exit();
+}
+
 // Handle profile update form submission
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update_profile'])) {
-    // Update user details
     $faculty_id = $_POST['faculty_id'];
     $fname = $_POST['fname'];
     $mname = $_POST['mname'];
     $lname = $_POST['lname'];
     $birthdate = $_POST['birthdate'];
     $age = $_POST['age'];
-    $username = $_POST['username'];
+    $new_username = $_POST['username'];
     $password = $_POST['password'];
+    $confirm_password = $_POST['confirm_password'];
 
-    // Only update password if it's provided
-    $passwordHash = !empty($password) ? password_hash($password, PASSWORD_DEFAULT) : null;
-
-    // Prepare the base update query
-    $update_query_str = "
-        UPDATE registers 
-        JOIN logins ON logins.register_id = registers.id 
-        SET 
-            registers.faculty_ID = ?, 
-            registers.fname = ?, 
-            registers.mname = ?, 
-            registers.lname = ?, 
-            registers.birthdate = ?, 
-            registers.age = ?, 
-            logins.username = ?";
-
-    // Add password update if it exists
-    if ($passwordHash) {
-        $update_query_str .= ", logins.password = ?";
-    }
-    
-    $update_query_str .= " WHERE logins.username = ?";
-
-    // Prepare the statement
-    $update_query = $conn->prepare($update_query_str);
-
-    // Bind parameters based on whether the password is being updated
-    if ($passwordHash) {
-        $update_query->bind_param("sssssssss", $faculty_id, $fname, $mname, $lname, $birthdate, $age, $username, $passwordHash, $username);
+    if (!empty($password) && $password !== $confirm_password) {
+        echo "<script>alert('Passwords do not match.');</script>";
     } else {
-        $update_query->bind_param("ssssssss", $faculty_id, $fname, $mname, $lname, $birthdate, $age, $username, $username);
-    }
+        $passwordHash = !empty($password) ? password_hash($password, PASSWORD_DEFAULT) : null;
 
-    // Execute the query and check for success
-    if ($update_query->execute()) {
-        header("Location: dashboard.php");
-        exit();
-    } else {
-        echo "Error updating record: " . $conn->error;
+        $update_query_str = "
+            UPDATE registers 
+            JOIN logins ON logins.register_id = registers.id 
+            SET 
+                registers.faculty_ID = ?, 
+                registers.fname = ?, 
+                registers.mname = ?, 
+                registers.lname = ?, 
+                registers.birthdate = ?, 
+                registers.age = ?, 
+                logins.username = ?";
+
+        if ($passwordHash) {
+            $update_query_str .= ", logins.password = ?";
+        }
+
+        $update_query_str .= " WHERE logins.username = ?";
+
+        $update_query = $conn->prepare($update_query_str);
+
+        if ($passwordHash) {
+            $update_query->bind_param(
+                "sssssssss", 
+                $faculty_id, $fname, $mname, $lname, $birthdate, $age, $new_username, $passwordHash, $username
+            );
+        } else {
+            $update_query->bind_param(
+                "ssssssss", 
+                $faculty_id, $fname, $mname, $lname, $birthdate, $age, $new_username, $username
+            );
+        }
+
+        if ($update_query->execute()) {
+            $_SESSION['username'] = $new_username;
+            header("Location: dashboard.php");
+            exit();
+        } else {
+            echo "Error updating record: " . $conn->error;
+        }
     }
 }
 
-
 // Handle profile image upload/removal
 if (isset($_POST['upload_image']) || isset($_POST['remove_image'])) {
-    $register_id = $user['id']; // Use the correct primary key
+    $register_id = $user['id'];
 
-    if (isset($_POST['upload_image']) && isset($_FILES['profile_image']) && $_FILES['profile_image']['error'] == 0) {
-        // Get the MIME type of the uploaded file
+    if (isset($_POST['upload_image']) && isset($_FILES['profile_image']) && $_FILES['profile_image']['error'] === 0) {
         $fileType = mime_content_type($_FILES['profile_image']['tmp_name']);
         $allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/gif'];
 
-        // Check if the file type is allowed
         if (in_array($fileType, $allowedTypes)) {
-            // Get the image binary data
             $imageData = file_get_contents($_FILES['profile_image']['tmp_name']);
+            $stmt = $conn->prepare("UPDATE registers SET profile_image = ? WHERE id = ?");
+            $stmt->bind_param("si", $imageData, $register_id);
 
-            // Prepare the query to store the binary data in a BLOB field
-            $update_image_query = "UPDATE registers SET profile_image = ? WHERE id = ?";
-            $stmt = mysqli_prepare($conn, $update_image_query);
-            mysqli_stmt_bind_param($stmt, "si", $imageData, $register_id);
-
-            if (mysqli_stmt_execute($stmt)) {
-                // Refresh user info to fetch the latest profile image
+            if ($stmt->execute()) {
                 $user['profile_image'] = $imageData;
             } else {
-                echo "Failed to update image in the database: " . mysqli_error($conn);
+                echo "Failed to update image: " . $conn->error;
             }
         } else {
-            echo "Invalid file type. Only JPEG, PNG, JPG, and GIF files are allowed.";
+            echo "Invalid file type. Only JPEG, PNG, JPG, and GIF allowed.";
         }
     } elseif (isset($_POST['remove_image'])) {
-        // Prepare the query to remove the image
-        $remove_query = "UPDATE registers SET profile_image = NULL WHERE id = ?";
-        $stmt = mysqli_prepare($conn, $remove_query);
-        mysqli_stmt_bind_param($stmt, "i", $register_id);
+        $stmt = $conn->prepare("UPDATE registers SET profile_image = NULL WHERE id = ?");
+        $stmt->bind_param("i", $register_id);
 
-        if (mysqli_stmt_execute($stmt)) {
-            // Clear the profile image in the user array
+        if ($stmt->execute()) {
             $user['profile_image'] = null;
         } else {
-            echo "Failed to remove image from the database: " . mysqli_error($conn);
+            echo "Failed to remove image: " . $conn->error;
         }
     }
 }
@@ -120,8 +131,7 @@ if (isset($_POST['upload_image']) || isset($_POST['remove_image'])) {
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta charset="UTF-8">
     <title>Update Profile</title>
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css">
     <link rel="stylesheet" href="dashboard.css">
@@ -130,13 +140,13 @@ if (isset($_POST['upload_image']) || isset($_POST['remove_image'])) {
             const birthdate = new Date(document.getElementById('birthdate').value);
             const today = new Date();
             let age = today.getFullYear() - birthdate.getFullYear();
-            const monthDiff = today.getMonth() - birthdate.getMonth();
-            if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthdate.getDate())) {
+            const m = today.getMonth() - birthdate.getMonth();
+            if (m < 0 || (m === 0 && today.getDate() < birthdate.getDate())) {
                 age--;
             }
             document.getElementById('age').value = age;
         }
-        
+
         function triggerFileInput() {
             document.getElementById('file-input').click();
         }
@@ -149,13 +159,11 @@ if (isset($_POST['upload_image']) || isset($_POST['remove_image'])) {
 <body>
 
 <nav class="navbar navbar-expand-lg navbar-dark" style="background-color: rgba(60, 63, 65, 0.85);">
-    <a class="navbar-brand" href="#" style="color: rgba(255, 204, 0, 0.9);">Dashboard</a>
-    <!-- Navbar content -->
+    <a class="navbar-brand" href="dashboard.php" style="color: rgba(255, 204, 0, 0.9);">Dashboard</a>
 </nav>
 
 <div class="container mt-4">
-    <h2>Update Profile</h2>
-    <h2 class="mt-4">Update Profile Image</h2>
+    <h2>Update Profile Image</h2>
     <form action="" method="POST" enctype="multipart/form-data">
         <input type="hidden" name="upload_image" value="1">
         <div class="form-group">
@@ -164,11 +172,12 @@ if (isset($_POST['upload_image']) || isset($_POST['remove_image'])) {
             <button type="submit" class="btn btn-success" id="save-button" style="display:none;">Save Image</button>
         </div>
     </form>
-
     <form action="" method="POST">
         <input type="hidden" name="remove_image" value="1">
         <button type="submit" class="btn btn-danger">Remove Image</button>
     </form>
+
+    <h2 class="mt-4">Update Profile Information</h2>
     <form action="" method="POST">
         <input type="hidden" name="update_profile" value="1">
         <div class="form-group">
@@ -193,14 +202,14 @@ if (isset($_POST['upload_image']) || isset($_POST['remove_image'])) {
         </div>
         <div class="form-group">
             <label for="age">Age</label>
-            <input type="number" class="form-control" id="age" name="age" value="<?php echo htmlspecialchars($user['age']); ?>" required readonly>
+            <input type="number" class="form-control" id="age" name="age" value="<?php echo htmlspecialchars($user['age']); ?>" readonly>
         </div>
         <div class="form-group">
             <label for="username">Username</label>
             <input type="text" class="form-control" id="username" name="username" value="<?php echo htmlspecialchars($user['username']); ?>" required>
         </div>
         <div class="form-group">
-            <label for="password">New Password (leave blank to keep current password)</label>
+            <label for="password">New Password (optional)</label>
             <input type="password" class="form-control" id="password" name="password">
         </div>
         <div class="form-group">
@@ -210,8 +219,6 @@ if (isset($_POST['upload_image']) || isset($_POST['remove_image'])) {
         <button type="submit" class="btn btn-primary">Update Profile</button>
         <a href="dashboard.php" class="btn btn-secondary">Cancel</a>
     </form>
-
-   
 </div>
 
 </body>

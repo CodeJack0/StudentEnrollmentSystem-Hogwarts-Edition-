@@ -9,7 +9,15 @@ if (!isset($_SESSION['username'])) {
     exit();
 }
 
+// Only allow admin and faculty
+if (!isset($_SESSION['role']) || !in_array($_SESSION['role'], ['admin', 'faculty'])) {
+    header("Location: unauthorized.php"); // You can customize this page
+    exit();
+}
+
 $conn = getDbConnection();
+
+$errors = []; // For collecting error messages
 
 // Handle Update
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update_course'])) {
@@ -28,6 +36,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update_course'])) {
         // Handle error case
         $errors[] = "Error updating course: " . $stmt->error;
     }
+    $stmt->close();
 }
 
 // Fetch course details
